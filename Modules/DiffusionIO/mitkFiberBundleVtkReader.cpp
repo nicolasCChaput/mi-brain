@@ -33,6 +33,34 @@ See LICENSE.txt or http://www.mitk.org for details.
 #include <vtkXMLPolyDataReader.h>
 #include <vtkXMLDataReader.h>
 #include "mitkDiffusionIOMimeTypes.h"
+#include "FiberBundle/ScopedProgress.hpp"
+#include <vtkCallbackCommand.h>
+#include <vtkCommand.h>
+
+namespace
+{
+  // The VTK reader reports its progress in [0, 1]
+  constexpr unsigned int ReadSteps = 100;
+
+  void OnReaderProgress(vtkObject*, unsigned long, void* clientData, void* callData)
+  {
+    const double fraction = *static_cast<double*>(callData);
+    static_cast<ScopedProgress*>(clientData)->AdvanceTo(
+      static_cast<unsigned int>(fraction * ReadSteps));
+  }
+
+  // Forwards the progress of the VTK reader to the MITK progress bar for as
+  // long as the returned command is observing it.
+  vtkSmartPointer<vtkCallbackCommand> ObserveProgress(
+    vtkAlgorithm* reader, ScopedProgress& progress)
+  {
+    auto callback = vtkSmartPointer<vtkCallbackCommand>::New();
+    callback->SetCallback(OnReaderProgress);
+    callback->SetClientData(&progress);
+    reader->AddObserver(vtkCommand::ProgressEvent, callback);
+    return callback;
+  }
+}
 
 
 mitk::FiberBundleVtkReader::FiberBundleVtkReader()
@@ -74,7 +102,11 @@ std::vector<itk::SmartPointer<mitk::BaseData> > mitk::FiberBundleVtkReader::DoRe
 
     if (reader->IsFilePolyData())
     {
+      // +1 for the creation of the fiber bundle
+      ScopedProgress progress(ReadSteps + 1);
+      auto progressCallback = ObserveProgress(reader, progress);
       reader->Update();
+      reader->RemoveObserver(progressCallback);
 
       if ( reader->GetOutput() != nullptr )
       {
@@ -105,7 +137,11 @@ std::vector<itk::SmartPointer<mitk::BaseData> > mitk::FiberBundleVtkReader::DoRe
 
     if ( reader->CanReadFile(this->GetInputLocation().c_str()) )
     {
+      // +1 for the creation of the fiber bundle
+      ScopedProgress progress(ReadSteps + 1);
+      auto progressCallback = ObserveProgress(reader, progress);
       reader->Update();
+      reader->RemoveObserver(progressCallback);
 
       if ( reader->GetOutput() != nullptr )
       {

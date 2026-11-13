@@ -11,6 +11,7 @@
 #include <mitkLogMacros.h>
 
 #include "FilteredFiberBundle.hpp"
+#include "ScopedProgress.hpp"
 
 #include <vtkCellArray.h>
 #include <vtkFloatArray.h>
@@ -22,6 +23,11 @@
 
 namespace
 {
+  // Progress steps used by ReadTrx
+  constexpr unsigned int LoadSteps = 1;
+  constexpr unsigned int PositionsSteps = 100;
+  constexpr unsigned int FinalizeSteps = 3; // cells, groups, fiber bundle
+
   template <typename T>
   void ConvertPositions(const void* data, size_t count, float* out)
   {
@@ -159,7 +165,8 @@ namespace
     }
   }
 
-  vtkSmartPointer<vtkPolyData> TrxToPolyData(const trx::AnyTrxFile& trxFile)
+  vtkSmartPointer<vtkPolyData> TrxToPolyData(
+    const trx::AnyTrxFile& trxFile, ScopedProgress& progress)
   {
     const auto nbPoints = static_cast<vtkIdType>(trxFile.num_vertices());
 
@@ -168,10 +175,16 @@ namespace
     coords->SetNumberOfTuples(nbPoints);
     float* dst = coords->GetPointer(0);
 
-    // Read by chunks to avoid materializing a converted copy of the whole file
-    constexpr size_t chunkBytes = 64 * 1024 * 1024;
+    // Read by chunks to avoid materializing a converted copy of the whole
+    // file. The positions are memory-mapped, so this is also where most of
+    // the disk reading happens: use enough chunks to get a smooth progress.
+    const size_t totalBytes = trxFile.positions.to_bytes().size;
+    const size_t chunkBytes = std::clamp<size_t>(
+      totalBytes / PositionsSteps, 1024 * 1024, 64 * 1024 * 1024);
+    const auto totalPoints = static_cast<size_t>(nbPoints);
     trxFile.for_each_positions_chunk(chunkBytes,
-      [dst](trx::TrxScalarType dtype, const void* data, size_t offset, size_t count)
+      [dst, totalPoints, &progress](
+        trx::TrxScalarType dtype, const void* data, size_t offset, size_t count)
       {
         float* out = dst + 3 * offset;
         switch (dtype)
@@ -180,6 +193,9 @@ namespace
           case trx::TrxScalarType::Float32: ConvertPositions<float>(data, count, out); break;
           case trx::TrxScalarType::Float64: ConvertPositions<double>(data, count, out); break;
         }
+        const auto done = static_cast<unsigned int>(
+          (offset + count) * PositionsSteps / totalPoints);
+        progress.AdvanceTo(LoadSteps + done);
       });
 
     auto points = vtkSmartPointer<vtkPoints>::New();
@@ -216,6 +232,7 @@ namespace
     polyData->SetPoints(points);
     polyData->SetLines(lines);
     polyData->ComputeBounds();
+    progress.Advance();
     return polyData;
   }
 }
@@ -223,14 +240,20 @@ namespace
 vtkIdType FiberBundle_EXPORT ReadTrx(
   const std::string& filename, mitk::FilteredFiberBundle* fiber)
 {
+  ScopedProgress progress(LoadSteps + PositionsSteps + FinalizeSteps);
+
+  // Fast for uncompressed files (memory-mapped), but compressed ones are
+  // extracted to a temporary directory here.
   auto trxFile = trx::load_any(filename);
+  progress.Advance(LoadSteps);
   if (trxFile.num_vertices() == 0)
   {
     return 0;
   }
 
-  auto polyData = TrxToPolyData(trxFile);
+  auto polyData = TrxToPolyData(trxFile, progress);
   auto groups = ReadGroups(trxFile);
+  progress.Advance();
 
   // SetFiberPolyData deep copies, so the mapped file (and the temporary
   // directory created for zipped .trx files) can be released now.
