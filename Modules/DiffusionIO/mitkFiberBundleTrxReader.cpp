@@ -10,7 +10,9 @@
 
 namespace
 {
-  // Restores the previous locale when leaving scope, even on exceptions.
+  // Forces the "C" locale (the TRX header is JSON: numbers must be parsed with
+  // a '.' decimal separator) and restores the previous locale when leaving
+  // scope, even on exceptions.
   class LocaleGuard
   {
   public:
@@ -50,6 +52,8 @@ std::vector<itk::SmartPointer<mitk::BaseData> > mitk::FiberBundleTrxReader::DoRe
   const std::string filename = this->GetInputLocation();
   MITK_INFO << "Loading tractogram (TRX format): " << itksys::SystemTools::GetFilenameName(filename);
 
+  // A FilteredFiberBundle, not a plain FiberBundle: it's the only one that
+  // can hold the TRX groups.
   auto fiber = FilteredFiberBundle::New();
   if (ReadTrx(filename, fiber) == 0)
   {

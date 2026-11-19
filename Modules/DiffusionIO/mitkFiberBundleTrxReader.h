@@ -13,7 +13,11 @@
 namespace mitk
 {
 
-  /** \brief
+  /** \brief Reads TRX tractograms (.trx) into a FilteredFiberBundle.
+  *
+  * The streamlines are converted to MITK world (LPS mm) and the TRX groups
+  * are kept as streamline groups, which are shown as tract groups under the
+  * dataset node. See FiberBundle/Trx.h for what is (not) read.
   */
 
   class FiberBundleTrxReader : public AbstractFileReader
@@ -34,4 +38,4 @@ namespace mitk
 
 } //namespace MITK
 
-#endif // __mitkFiberBundleReader_h
+#endif // __mitkFiberBundleTrxReader_h

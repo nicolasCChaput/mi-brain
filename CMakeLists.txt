@@ -303,6 +303,14 @@ add_subdirectory(Modules)
 #-----------------------------------------------------------------------------
 # TRX
 #-----------------------------------------------------------------------------
+# trx-cpp (https://github.com/tee-ar-ex/trx-cpp) reads and writes .trx files.
+# It is used by the FiberBundle module (FiberBundle/Trx.cpp).
+#
+# trx-cpp needs Eigen. It must use the Eigen shipped with ITK, otherwise the
+# two Eigen versions conflict at build time.
+#
+# TODO: the paths below are specific to one machine. They should come from
+# the superbuild (or be cache variables) before this is merged.
 
 set(Eigen3_DIR
     "/data/clan2201/MITK-superbuild/ep/lib/cmake/ITK-5.4/Modules")
@@ -317,6 +325,7 @@ else()
   message(FATAL_ERROR "Eigen3::Eigen does NOT exist")
 endif()
 
+# Builds trx-cpp with the project, which provides the trx-cpp::trx target
 add_subdirectory(
     /data/clan2201/trx-cpp
     ${CMAKE_BINARY_DIR}/trx-cpp-build

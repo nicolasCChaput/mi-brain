@@ -45,6 +45,8 @@ namespace mitk
           props[ us::ServiceConstants::SERVICE_RANKING() ] = -2;
         else if (mt->GetName()==mitk::DiffusionIOMimeTypes::FIBERBUNDLE_DICOM_MIMETYPE_NAME())
           props[ us::ServiceConstants::SERVICE_RANKING() ] = -4;
+        // Lowest fiber bundle ranking: TRX is never picked by default when
+        // more than one fiber format could be used.
         else if (mt->GetName()==mitk::DiffusionIOMimeTypes::FIBERBUNDLE_TRX_MIMETYPE_NAME())
           props[ us::ServiceConstants::SERVICE_RANKING() ] = -5;
         else

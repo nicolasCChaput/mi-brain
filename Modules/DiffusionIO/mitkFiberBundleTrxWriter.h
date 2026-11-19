@@ -6,6 +6,12 @@
 namespace mitk
 {
 
+/** \brief Writes fiber bundles as TRX tractograms (.trx).
+*
+* The streamlines are converted from MITK world (LPS mm) to TRX RAS+ mm. The
+* streamline groups of a FilteredFiberBundle are written as TRX groups.
+* Colors and other per-point/per-streamline data are not written.
+*/
 class FiberBundleTrxWriter : public mitk::AbstractFileWriter
 {
 public:

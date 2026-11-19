@@ -11,7 +11,9 @@
 
 namespace
 {
-  // Restores the previous locale when leaving scope, even on exceptions.
+  // Forces the "C" locale (the TRX header is JSON: numbers must be written
+  // with a '.' decimal separator) and restores the previous locale when
+  // leaving scope, even on exceptions.
   class LocaleGuard
   {
   public:

@@ -361,6 +361,8 @@ void Filtering::EnableTractGroup(
   const mitk::DataNode* TGNode)
 {
   auto& TG = GetTractGroup(datasetNode, TGNode);
+  // A fixed TG can have no ROI line, so its part can't rely on
+  // EnableROIInTractGroup to be enabled.
   if (TG.IsFixed())
   {
     m_NodeDataMap[datasetNode].fiberMapperData
@@ -378,6 +380,8 @@ void Filtering::DisableTractGroup(
   mitk::DataNode* TGNode)
 {
   auto& TG = GetTractGroup(datasetNode, TGNode);
+  // Same as EnableTractGroup: a fixed TG without ROI line must be disabled
+  // explicitly.
   if (TG.IsFixed())
   {
     m_NodeDataMap[datasetNode].fiberMapperData
@@ -497,6 +501,7 @@ bool Filtering::HasAnyActiveROI(
   const mitk::DataNode* TGNode) const
 {
   const auto& TG = m_DatasetInfo.at(datasetNode).tractGroups.at(TGNode);
+  // A visible fixed TG selects its streamlines even without any active ROI
   if (TG.IsFixed() && TGNode->IsVisible(nullptr)) { return true; }
 
   for (const auto& roi_lines : TG.lines)
