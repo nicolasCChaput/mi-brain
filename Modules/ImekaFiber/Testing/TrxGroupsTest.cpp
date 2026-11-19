@@ -28,6 +28,10 @@ class TrxGroupsTestSuite : public FibersManagerTester
   MITK_TEST(TestWriteReadTrxGroups);
   MITK_TEST(TestShuffleKeepsGroups);
   MITK_TEST(TestSaveOnlyVisibleDataset);
+  MITK_TEST(TestPromptInfo);
+  MITK_TEST(TestPromptLoadsChosenGroups);
+  MITK_TEST(TestPromptCancel);
+  MITK_TEST(TestPromptColoring);
   CPPUNIT_TEST_SUITE_END();
 
 private:
@@ -80,6 +84,17 @@ private:
       m_FibersNode, false);
   }
 
+  // Writes m_Fibers with groups A = {0, 1, 2}, B = {2, 5} and C = {7}
+  // (streamlines 3, 4, 6, 8 and 9 are in no group)
+  std::string WritePromptTestFile() const
+  {
+    const auto path = mitk::IOUtil::GetTempPath() + "/TrxPromptTest.trx";
+    std::remove(path.c_str());
+    WriteTrx(path, m_Fibers->GetFiberPolyData(),
+      { { "A", { 0, 1, 2 } }, { "B", { 2, 5 } }, { "C", { 7 } } });
+    return path;
+  }
+
 public:
   void setUp() override
   {
@@ -96,6 +111,7 @@ public:
 
   void tearDown() override
   {
+    SetTrxLoadPrompt(nullptr);
     m_Fibers = nullptr;
     m_FibersNode = nullptr;
     FibersManagerTester::tearDown();
@@ -334,6 +350,103 @@ public:
     saved = saver.FiberBundleFromVisibleStreamlines();
     CPPUNIT_ASSERT_EQUAL(10, saved->GetNumFibers());
     CPPUNIT_ASSERT(saved->GetStreamlineGroups().empty());
+  }
+  // The prompt receives the facts of the file before anything is loaded
+  void TestPromptInfo()
+  {
+    const auto path = WritePromptTestFile();
+    TrxFileInfo info;
+    SetTrxLoadPrompt([&info](const TrxFileInfo& i)
+    {
+      info = i;
+      return std::optional<TrxLoadChoice>(TrxLoadChoice());
+    });
+
+    auto loaded = mitk::FilteredFiberBundle::New();
+    const auto nbPoints = ReadTrx(path, loaded);
+    std::remove(path.c_str());
+
+    CPPUNIT_ASSERT_EQUAL(std::string("TrxPromptTest.trx"), info.filename);
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(10), info.nbStreamlines);
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(nbPoints), info.nbPoints);
+    const std::vector<std::pair<std::string, size_t>> groups =
+      { { "A", 3 }, { "B", 2 }, { "C", 1 } };
+    CPPUNIT_ASSERT(groups == info.groups);
+
+    // No group chosen: the whole file, ungrouped streamlines included
+    CPPUNIT_ASSERT_EQUAL(10, loaded->GetNumFibers());
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3),
+      loaded->GetStreamlineGroups().size());
+  }
+
+  // Only the streamlines of the chosen groups are loaded, and the groups
+  // are remapped to the loaded streamlines
+  void TestPromptLoadsChosenGroups()
+  {
+    const auto path = WritePromptTestFile();
+    SetTrxLoadPrompt([](const TrxFileInfo&)
+    {
+      TrxLoadChoice choice;
+      choice.groups = std::set<std::string>{ "A", "C" };
+      return std::optional<TrxLoadChoice>(choice);
+    });
+
+    auto loaded = mitk::FilteredFiberBundle::New();
+    const auto nbPoints = ReadTrx(path, loaded);
+    std::remove(path.c_str());
+
+    CPPUNIT_ASSERT_EQUAL(4, loaded->GetNumFibers());
+    CPPUNIT_ASSERT_EQUAL(nbPoints,
+      loaded->GetFiberPolyData()->GetNumberOfPoints());
+    const Groups expected = { { "A", { 0, 1, 2 } }, { "C", { 7 } } };
+    CPPUNIT_ASSERT(expected == OriginalGroups(loaded));
+
+    // Each streamline keeps all its points: streamline i of Get1_10Fibers
+    // has the same number of points in the file and in the loaded bundle
+    auto original = m_Fibers->GetFiberPolyData();
+    auto polyData = loaded->GetFiberPolyData();
+    const vtkIdType originalIndexes[] = { 0, 1, 2, 7 };
+    for (vtkIdType i = 0; i < 4; ++i)
+    {
+      CPPUNIT_ASSERT_EQUAL(
+        original->GetCell(originalIndexes[i])->GetNumberOfPoints(),
+        polyData->GetCell(i)->GetNumberOfPoints());
+    }
+  }
+
+  void TestPromptCancel()
+  {
+    const auto path = WritePromptTestFile();
+    SetTrxLoadPrompt([](const TrxFileInfo&)
+    {
+      return std::optional<TrxLoadChoice>();
+    });
+
+    auto loaded = mitk::FilteredFiberBundle::New();
+    CPPUNIT_ASSERT_THROW(ReadTrx(path, loaded), TrxLoadCancelled);
+    std::remove(path.c_str());
+    CPPUNIT_ASSERT_EQUAL(0, loaded->GetNumFibers());
+  }
+
+  // The coloring chosen in the prompt is applied when the bundle is added
+  void TestPromptColoring()
+  {
+    const auto path = WritePromptTestFile();
+    SetTrxLoadPrompt([](const TrxFileInfo&)
+    {
+      TrxLoadChoice choice;
+      choice.coloring = mitk::FilteredFiberBundle::EndPoint;
+      return std::optional<TrxLoadChoice>(choice);
+    });
+
+    auto loaded = mitk::FilteredFiberBundle::New();
+    CPPUNIT_ASSERT(ReadTrx(path, loaded) > 0);
+    std::remove(path.c_str());
+
+    AddFibersNode(loaded, "Loaded");
+    CPPUNIT_ASSERT(loaded->IsInEndPointColoring());
+    CPPUNIT_ASSERT(
+      loaded->GetProperty(TrxInitialColoringProperty).IsNull());
   }
 };
 

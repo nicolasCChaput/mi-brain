@@ -2,6 +2,8 @@
 
 #include <mitkVtkResliceInterpolationProperty.h>
 
+#include "FiberBundle/Trx.h"
+
 #include "ImekaCommon/Colors.hpp"
 #include "ImekaCommon/Predicate.hpp"
 #include "ImekaGeometry/ViewUtils.hpp"
@@ -263,6 +265,16 @@ void FibersManager::FibersAdded(
 
   m_Filtering.AddDataset(node, fiber);
   m_FilteringUI.AddStreamlineGroups(node, fiber);
+
+  // Coloring chosen in the TRX load dialog. Setting "ColorType" goes through
+  // the same callback as the coloring actions of the Data Manager.
+  int coloring = -1;
+  if (fiber->GetPropertyList()->GetIntProperty(
+        TrxInitialColoringProperty, coloring))
+  {
+    fiber->GetPropertyList()->DeleteProperty(TrxInitialColoringProperty);
+    node->SetIntProperty("ColorType", coloring);
+  }
 
   // Centering and updating views
   mitk::RenderingManager::GetInstance()->InitializeViews(fiber->GetGeometry());

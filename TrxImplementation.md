@@ -53,6 +53,8 @@ Entry point: `mitk::FiberBundleTrxReader::DoRead()`
 2. A `mitk::FilteredFiberBundle` is created and passed to `ReadTrx(filename, fiber)`.
 3. If `ReadTrx` returns 0 points, a `std::length_error` is thrown (same message
    and behaviour as the TCK reader), so empty files never reach the DataManager.
+   If the user cancels the load dialog, `ReadTrx` throws `TrxLoadCancelled`
+   (see §9).
 4. The fiber bundle is returned to MITK.
 
 `ReadTrx()` (`Modules/FiberBundle/FiberBundle/Trx.cpp`):
@@ -60,7 +62,14 @@ Entry point: `mitk::FiberBundleTrxReader::DoRead()`
 1. **Load** – `trx::load_any(filename)` opens the file whatever its position
    dtype (float16/32/64), and whether it is a zipped `.trx` or a directory. It
    returns a `trx::AnyTrxFile` whose arrays are memory-mapped.
-2. **Positions → `vtkPoints`** – `TrxToPolyData()` allocates one
+2. **Groups** – `ReadGroups()` copies `groups/*` into a
+   `FilteredFiberBundle::StreamlineGroups` (name -> streamline indices), before
+   the file is closed (see §8).
+3. **Load dialog** – if a load prompt is registered (`SetTrxLoadPrompt`, done
+   by the GUI), it is called with the file name, number of points, number of
+   streamlines and the groups. The user picks a coloring and the groups to
+   load, or cancels (see §9). Nothing has been converted yet at this point.
+4. **Positions → `vtkPoints`** – `TrxToPolyData()` allocates one
    `vtkFloatArray` of `num_vertices()` × 3, then walks the positions with
    `for_each_positions_chunk()` in 64 MB chunks. Each chunk is converted by
    `ConvertPositions<T>()` (`T` = `Eigen::half`, `float` or `double`):
@@ -68,22 +77,24 @@ Entry point: `mitk::FiberBundleTrxReader::DoRead()`
      zip are not guaranteed to be aligned;
    - **coordinates are converted from RAS+ mm (TRX) to LPS mm (MITK world)** by
      negating X and Y – the same `(-x, -y, z)` flip done by `ReadTck`.
-3. **Offsets → `vtkCellArray`** – TRX stores all streamlines contiguously with an
+5. **Offsets → `vtkCellArray`** – TRX stores all streamlines contiguously with an
    `offsets` array giving the first point of each streamline. This is exactly
    VTK's modern cell-array layout (offsets + connectivity), so:
    - TRX `offsets` are copied into a `vtkIdTypeArray`; a trailing sentinel equal
      to the number of points is appended if the file omits it;
    - connectivity is simply `0, 1, 2, … N-1`;
-   - `vtkCellArray::SetData(offsets, connectivity)` builds all lines at once,
-     without creating one `vtkPolyLine` per streamline as `ReadTck` does.
-4. **Groups** – `ReadGroups()` copies `groups/*` into a
-   `FilteredFiberBundle::StreamlineGroups` (name -> streamline indices), before
-   the file is closed (see §8).
-5. **Hand-off** – `trxFile.close()` releases the mapping (and the temporary
+   - `vtkCellArray::SetData(offsets, connectivity)` builds all lines at once
+     (`LinesPolyData()`), without creating one `vtkPolyLine` per streamline as
+     `ReadTck` does.
+
+   When only some groups were chosen, steps 4 and 5 are done by
+   `TrxSubsetToPolyData()` instead, for the chosen streamlines only (§9).
+6. **Hand-off** – `trxFile.close()` releases the mapping (and the temporary
    directory trx-cpp extracts zipped files into), then
    `fiber->SetFiberPolyData(polyData)` stores the data (it deep-copies, so
    closing first is safe) and `fiber->SetStreamlineGroups(groups)` stores the
-   groups.
+   groups. When a prompt is registered, the chosen coloring is stored in the
+   `trx.InitialColoring` property of the fiber bundle (§9).
 
 ## 3. How writing works
 
@@ -135,11 +146,12 @@ real reference geometry (`VOXEL_TO_RASMM`, `DIMENSIONS`) on read or write.
 
 | File | Role |
 |---|---|
-| `Modules/FiberBundle/FiberBundle/Trx.h` | Declares `ReadTrx()` and `WriteTrx()` (exported with `FiberBundle_EXPORT`). Only VTK/std types in the interface, so trx-cpp stays private. |
+| `Modules/FiberBundle/FiberBundle/Trx.h` | Declares `ReadTrx()` and `WriteTrx()` (exported with `FiberBundle_EXPORT`), and the load prompt API: `TrxFileInfo`, `TrxLoadChoice`, `TrxLoadPrompt`, `SetTrxLoadPrompt()`, `TrxLoadCancelled`, `TrxInitialColoringProperty` (§9). Only VTK/std/MITK types in the interface, so trx-cpp stays private. |
 | `Modules/FiberBundle/FiberBundle/Trx.cpp` | TRX ⇄ `vtkPolyData` conversion (see §2 and §3). |
 | `Modules/DiffusionIO/mitkFiberBundleTrxReader.h/.cpp` | `mitk::FiberBundleTrxReader`, an `AbstractFileReader` registered for the TRX mime type. |
 | `Modules/DiffusionIO/mitkFiberBundleTrxWriter.h/.cpp` | `mitk::FiberBundleTrxWriter`, an `AbstractFileWriter` for `FilteredFiberBundle` and the TRX mime type. Passes the bundle's streamline groups to `WriteTrx()`. |
-| `Modules/ImekaFiber/Testing/TrxGroupsTest.cpp` | `TrxGroupsTest` suite: group nodes, visibility, saving, TRX round trip, shuffle and saver regressions (see §8). |
+| `Modules/ImekaFiber/Testing/TrxGroupsTest.cpp` | `TrxGroupsTest` suite: group nodes, visibility, saving, TRX round trip, shuffle and saver regressions (see §8), load prompt (see §9). |
+| `Plugins/org.imeka.mibrain.eager/src/internal/TrxLoadDialog.hpp/.cpp` | `TrxLoadDialog` (the load dialog, see §9) and `CheckableComboBox` (combo box of check boxes used for the groups). |
 
 ### Modified files
 
@@ -158,7 +170,9 @@ real reference geometry (`VOXEL_TO_RASMM`, `DIMENSIONS`) on read or write.
 | `Modules/ImekaFiber/ImekaFiber/types.hpp` | `TractGroup::fixedIndexes` / `IsFixed()` for the tract groups made of a fixed set of streamlines (TRX groups). |
 | `Modules/ImekaFiber/ImekaFiber/Filtering/Filtering.hpp/.cpp` | `AddFixedTractGroup()`, `HasFixedTractGroup()`, `HasVisibleFixedTractGroup()`, `RemapFixedTractGroups()`; fixed TGs handled in `EnableTractGroup()`, `DisableTractGroup()`, `HasAnyActiveROI()` and `JoinAndExclude()`. |
 | `Modules/ImekaFiber/ImekaFiber/Filtering/FilteringUI.hpp/.cpp` | `AddStreamlineGroups()` creates the group nodes; `HideFixedTractGroups()` resets them when a dataset or the Tracts category is shown. |
-| `Modules/ImekaFiber/ImekaFiber/FibersManager.cpp` | Calls `AddStreamlineGroups()` in `FibersAdded()`; `ShuffleFibers()` remaps the fixed TGs and recomputes the length subset. |
+| `Modules/ImekaFiber/ImekaFiber/FibersManager.cpp` | Calls `AddStreamlineGroups()` in `FibersAdded()`; `ShuffleFibers()` remaps the fixed TGs and recomputes the length subset; `FibersAdded()` applies the coloring chosen in the TRX load dialog (§9). |
+| `Plugins/org.imeka.mibrain.eager/src/internal/PluginActivator.cpp` | Registers the TRX load prompt (`SetTrxLoadPrompt`) on start, removes it on stop (§9). |
+| `Plugins/org.imeka.mibrain.eager/files.cmake`, `CMakeLists.txt` | Adds `TrxLoadDialog.cpp`; `FiberBundle` added to `MODULE_DEPENDS`. |
 | `Modules/ImekaFiber/ImekaFiber/Mapper/MapperData.hpp/.cpp` | `FiberBundleFromData()` records the new index of each copied streamline (`newIds`) and fills the groups of the new bundle; `AddStreamlineGroup()` helper. |
 | `Modules/ImekaFiber/ImekaFiber/Saver.cpp` | The save visible fibers actions fill the groups of the saved bundle; with one visible dataset, that dataset is saved (it used to be the first one of the map). |
 | `Modules/ImekaFiber/Testing/CMakeLists.txt`, `files.cmake` | Register `TrxGroupsTest`. |
@@ -258,6 +272,7 @@ absolute paths and makes the build reproducible on other machines/CI. It is
   `MTime`), not when `Shuffle()` reorders the streamlines, so ROI selections
   may be stale after a shuffle.
 - **dpp / dps / dpg**: not imported or exported.
+- **Load dialog**: see the limits in §9 (cancel message, dialog on reload).
 - **Build portability**: see §5 and `PLAN.md` (superbuild integration, libzip as
   an external project, Eigen path not tied to `ITK-5.4`).
 - **Validation**: compare point coordinates of the same tractogram loaded as
@@ -361,3 +376,107 @@ tractogram.
 
 - Groups are not saved in scenes.
 - `dpg` (e.g. group colors) is neither read nor written.
+
+---
+
+## 9. Load dialog
+
+When a `.trx` file is opened in MI-Brain (File > Open, drag and drop), a
+dialog is shown before any streamline is converted:
+
+```
+┌ Open TRX tractogram ──────────────────────┐
+│ File:         tractogram.trx              │
+│ Points:       12,345,678                  │
+│ Streamlines:  250,000                     │
+│ Coloring:     [Orientation          ▾]    │
+│ Groups:       [2 / 3 groups selected ▾]   │
+│                  ☑ AF_L (12,000)          │
+│                  ☐ AF_R (11,500)          │
+│                  ☑ CST_L (20,000)         │
+│                            [ OK ] [Cancel]│
+└───────────────────────────────────────────┘
+```
+
+- **Coloring**: Orientation, End points or Curvature. "From anatomy" (needs an
+  image) and "Uniform" (needs a color) are not offered; they can still be
+  applied from the Data Manager after loading.
+- **Groups**: one check box per TRX group, with its number of streamlines, all
+  checked by default. The popup stays open while groups are (un)checked. If
+  the file has no group, "No group in this file" is shown instead. OK is
+  disabled when every group is unchecked.
+- **OK** loads the file; **Cancel** stops the loading.
+
+### How it is wired
+
+The DiffusionIO and FiberBundle modules don't link Qt Widgets, and the reader
+is also used without GUI (tests, `mitk::IOUtil::Load`). So the dialog is not
+called by the reader directly: `Trx.h` holds a **load prompt** callback that
+the GUI registers.
+
+```
+QmitkIOUtil::Load (GUI thread)
+  └ FiberBundleTrxReader::DoRead
+      └ ReadTrx
+          ├ trx::load_any + ReadGroups          (file opened, nothing converted)
+          ├ LoadPrompt()(TrxFileInfo)  ───────►  TrxLoadDialog (eager plugin)
+          │                            ◄───────  TrxLoadChoice / std::nullopt
+          ├ TrxToPolyData or TrxSubsetToPolyData
+          └ fiber property "trx.InitialColoring" = choice.coloring
+DataStorage::Add → FibersManager::FibersAdded
+  └ node "ColorType" = trx.InitialColoring  (same callback as the color menu)
+```
+
+- `SetTrxLoadPrompt(TrxLoadPrompt)` (`Trx.h`) stores a
+  `std::function<std::optional<TrxLoadChoice>(const TrxFileInfo&)>`.
+  `org.imeka.mibrain.eager`'s `PluginActivator::start()` registers a lambda
+  that runs `TrxLoadDialog`; `stop()` removes it. Outside the GUI thread the
+  lambda returns the default choice (whole file) instead of showing a dialog.
+- Without a registered prompt (tests, command line), `ReadTrx` loads the whole
+  file and does not set `trx.InitialColoring`, exactly as before.
+- The prompt is called **after** `trx::load_any`, so the file is opened only
+  once: the header facts and group sizes come from the already mapped file.
+  For a zipped `.trx`, the extraction (done by `load_any`) happens before the
+  dialog is shown.
+- `TrxLoadChoice::groups` has no value when every group is checked: the whole
+  file is loaded (fast path, which also keeps the streamlines that are in no
+  group). Otherwise:
+  - `SelectGroups()` keeps the chosen groups, builds the sorted union of their
+    streamlines and remaps the group indices to the new streamline order
+    (new streamline `i` is streamline `selected[i]` of the file);
+  - `TrxSubsetToPolyData()` converts only these streamlines, reading their
+    memory-mapped positions directly through the TRX offsets (the dtype is
+    deduced from the size of the positions), so the other streamlines are
+    never read. Streamlines in no chosen group are not loaded.
+- **Cancel**: the prompt returns `std::nullopt` and `ReadTrx` throws
+  `TrxLoadCancelled` (the destructor of the `AnyTrxFile` removes the temporary
+  directory of zipped files).
+- **Coloring**: the reader has no `DataNode`, so the choice is stored as the
+  `trx.InitialColoring` IntProperty of the fiber bundle.
+  `FibersManager::FibersAdded()` reads it, removes it, and sets the node's
+  `"ColorType"` property, which applies the coloring through
+  `FibersColors::SetFibersActions`' callback.
+
+### Tests
+
+Added to `TrxGroupsTest` (the prompt is reset in `tearDown()`):
+
+| Test | Checks |
+|---|---|
+| `TestPromptInfo` | File name, numbers of points/streamlines and group sizes given to the prompt; default choice loads the whole file. |
+| `TestPromptLoadsChosenGroups` | Only the streamlines of the chosen groups are loaded, with all their points; groups remapped. |
+| `TestPromptCancel` | Cancel throws `TrxLoadCancelled` and leaves the bundle empty. |
+| `TestPromptColoring` | The chosen coloring is applied when the node is added; the property is removed. |
+
+The dialog itself (widgets) is not covered by automated tests.
+
+### Known limits
+
+- **Cancel shows a warning**: MITK turns any reader exception into an error
+  message box ("Exception occurred when reading file …: Loading cancelled by
+  the user."), like its own reader options dialog does. A silent cancel would
+  need changes to `QmitkIOUtil` or a custom File > Open action.
+- **Shown on reload too**: `ReloadFromDiskAction` and scenes containing a
+  `.trx` file go through the same reader, so the dialog appears there too.
+- **Ungrouped streamlines** can only be loaded with the whole file (all groups
+  checked); an "(ungrouped streamlines)" entry could be added.
