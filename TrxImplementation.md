@@ -25,7 +25,7 @@ TRX support follows the exact same structure as the existing `.tck` support:
                                        │ ReadTrx() / WriteTrx()
           ┌────────────────────────────┴────────────────────────────┐
           │ Modules/FiberBundle  (format logic, links trx-cpp)       │
-          │   FiberBundle/Trx.h, FiberBundle/Trx.cpp                 │
+          │   FiberBundle/Trx.h, TrxRead.cpp, TrxWrite.cpp           │
           └────────────────────────────┬────────────────────────────┘
                                        │ trx::load_any / trx::TrxStream
                                   trx-cpp (libtrx)
@@ -57,7 +57,7 @@ Entry point: `mitk::FiberBundleTrxReader::DoRead()`
    (see §9).
 4. The fiber bundle is returned to MITK.
 
-`ReadTrx()` (`Modules/FiberBundle/FiberBundle/Trx.cpp`):
+`ReadTrx()` (`Modules/FiberBundle/FiberBundle/TrxRead.cpp`):
 
 1. **Load** – `trx::load_any(filename)` opens the file whatever its position
    dtype (float16/32/64), and whether it is a zipped `.trx` or a directory. It
@@ -120,7 +120,7 @@ Entry point: `mitk::FiberBundleTrxWriter::Write()`
    without groups). `std::exception`s from trx-cpp are turned into
    `mitkThrow()` with the message.
 
-`WriteTrx()` (`Modules/FiberBundle/FiberBundle/Trx.cpp`):
+`WriteTrx()` (`Modules/FiberBundle/FiberBundle/TrxWrite.cpp`):
 
 1. Refuses an empty polydata (no points or no lines).
 2. Creates a `trx::TrxStream("float32")`. The stream spools positions to a
@@ -151,7 +151,8 @@ real reference geometry (`VOXEL_TO_RASMM`, `DIMENSIONS`) on read or write.
 | File | Role |
 |---|---|
 | `Modules/FiberBundle/FiberBundle/Trx.h` | Declares `ReadTrx()` and `WriteTrx()` (exported with `FiberBundle_EXPORT`), and the load prompt API: `TrxFileInfo`, `TrxLoadChoice`, `TrxLoadPrompt`, `SetTrxLoadPrompt()`, `TrxLoadCancelled`, `TrxInitialColoringProperty`, `TrxVisibleGroupsProperty` / `TrxVisibleGroupsSeparator` (§9). Only VTK/std/MITK types in the interface, so trx-cpp stays private. |
-| `Modules/FiberBundle/FiberBundle/Trx.cpp` | TRX ⇄ `vtkPolyData` conversion (see §2 and §3). |
+| `Modules/FiberBundle/FiberBundle/TrxRead.cpp` | TRX → `vtkPolyData` conversion, groups and load prompt: `ReadTrx()`, `SetTrxLoadPrompt()` (see §2 and §9). |
+| `Modules/FiberBundle/FiberBundle/TrxWrite.cpp` | `vtkPolyData` → TRX conversion and groups: `WriteTrx()` (see §3). |
 | `Modules/DiffusionIO/mitkFiberBundleTrxReader.h/.cpp` | `mitk::FiberBundleTrxReader`, an `AbstractFileReader` registered for the TRX mime type. |
 | `Modules/DiffusionIO/mitkFiberBundleTrxWriter.h/.cpp` | `mitk::FiberBundleTrxWriter`, an `AbstractFileWriter` for `FilteredFiberBundle` and the TRX mime type. Passes the bundle's streamline groups to `WriteTrx()`. |
 | `Modules/ImekaFiber/Testing/TrxGroupsTest.cpp` | `TrxGroupsTest` suite: group nodes, visibility, saving, TRX round trip, shuffle and saver regressions (see §8), load prompt (see §9). |
@@ -164,7 +165,7 @@ real reference geometry (`VOXEL_TO_RASMM`, `DIMENSIONS`) on read or write.
 | `Modules/DiffusionIO/mitkDiffusionIOMimeTypes.h/.cpp` | New `FIBERBUNDLE_TRX_MIMETYPE()` (extension `trx`, category/comment "Trx Fibers") and `FIBERBUNDLE_TRX_MIMETYPE_NAME()` (`<base>.FiberBundle.trx`); added to `DiffusionIOMimeTypes::Get()`. |
 | `Modules/DiffusionIO/mitkDiffusionModuleActivator.cpp` | Includes the new headers, gives the TRX mime type a service ranking of `-5`, and creates/deletes `m_FiberBundleTrxReader` and `m_FiberBundleTrxWriter` in `Load()`/`Unload()`. |
 | `Modules/DiffusionIO/files.cmake` | Adds `mitkFiberBundleTrxReader.cpp` and `mitkFiberBundleTrxWriter.cpp`. |
-| `Modules/FiberBundle/files.cmake` | Adds `FiberBundle/Trx.cpp`. |
+| `Modules/FiberBundle/files.cmake` | Adds `FiberBundle/TrxRead.cpp` and `FiberBundle/TrxWrite.cpp`. |
 | `Modules/FiberBundle/FiberBundle/FilteredFiberBundle.cpp` | Adds `"Fibers TRX (*.trx)"` to `Filters()`, so the "Save visible fibers to file(s)..." dialogs offer TRX (the save goes through `mitk::IOUtil::Save`, which picks the TRX writer from the extension). Colors are not saved in TRX. |
 | `Modules/FiberBundle/CMakeLists.txt` | Links `trx-cpp::trx` privately (see §5). |
 | `CMakeLists.txt` (root) | New "TRX" section that finds Eigen and builds trx-cpp (see §5). |
@@ -225,7 +226,7 @@ Key points:
   `trx-cpp::trx` is an `ALIAS` target created by trx-cpp's CMake. Even though
   `add_subdirectory(trx-cpp)` appears after `add_subdirectory(Modules)`, CMake
   resolves link targets at generation time, so it works. The link is `PRIVATE`
-  because `<trx/trx.h>` is only included from `Trx.cpp`; `Trx.h` exposes
+  because `<trx/trx.h>` is only included from `TrxRead.cpp` and `TrxWrite.cpp`; `Trx.h` exposes
   nothing from trx-cpp. DiffusionIO calls `ReadTrx`/`WriteTrx` through the
   exported FiberBundle functions and does not need trx-cpp at all.
 

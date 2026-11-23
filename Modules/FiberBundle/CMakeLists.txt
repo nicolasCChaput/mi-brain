@@ -1,6 +1,6 @@
 #-----------------------------------------------------------------------------
 # trx-cpp (https://github.com/tee-ar-ex/trx-cpp) reads and writes .trx files
-# (see FiberBundle/Trx.cpp). It is built here from a local source checkout.
+# (see FiberBundle/TrxRead.cpp and TrxWrite.cpp). It is built here from a local source checkout.
 #-----------------------------------------------------------------------------
 set(MIBRAIN_TRX_CPP_DIR "" CACHE PATH "Path to a trx-cpp source checkout")
 
@@ -11,8 +11,7 @@ if(NOT TARGET trx-cpp::trx)
       "(currently: '${MIBRAIN_TRX_CPP_DIR}').")
   endif()
 
-  # trx-cpp must use the Eigen shipped with ITK, otherwise the two Eigen
-  # versions conflict at build time.
+  # trx-cpp must use the Eigen shipped with ITK, otherwise the two Eigen versions conflict at build time.
   find_package(Eigen3 REQUIRED CONFIG NO_DEFAULT_PATH PATHS "${ITK_DIR}/Modules")
   set(TRX_EIGEN3_TARGET Eigen3::Eigen)
 
