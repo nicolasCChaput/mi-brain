@@ -30,6 +30,7 @@ class TrxGroupsTestSuite : public FibersManagerTester
   MITK_TEST(TestSaveOnlyVisibleDataset);
   MITK_TEST(TestPromptInfo);
   MITK_TEST(TestPromptLoadsChosenGroups);
+  MITK_TEST(TestPromptKeepsOtherStreamlines);
   MITK_TEST(TestPromptCancel);
   MITK_TEST(TestPromptColoring);
   CPPUNIT_TEST_SUITE_END();
@@ -412,6 +413,48 @@ public:
         original->GetCell(originalIndexes[i])->GetNumberOfPoints(),
         polyData->GetCell(i)->GetNumberOfPoints());
     }
+  }
+
+  // With keepOtherStreamlines, the whole file and all its groups are loaded,
+  // but only the chosen groups are shown
+  void TestPromptKeepsOtherStreamlines()
+  {
+    const auto path = WritePromptTestFile();
+    SetTrxLoadPrompt([](const TrxFileInfo&)
+    {
+      TrxLoadChoice choice;
+      choice.groups = std::set<std::string>{ "A", "C" };
+      choice.keepOtherStreamlines = true;
+      return std::optional<TrxLoadChoice>(choice);
+    });
+
+    auto loaded = mitk::FilteredFiberBundle::New();
+    CPPUNIT_ASSERT(ReadTrx(path, loaded) > 0);
+    std::remove(path.c_str());
+
+    CPPUNIT_ASSERT_EQUAL(10, loaded->GetNumFibers());
+    const Groups expected =
+      { { "A", { 0, 1, 2 } }, { "B", { 2, 5 } }, { "C", { 7 } } };
+    CPPUNIT_ASSERT(expected == OriginalGroups(loaded));
+
+    auto node = AddFibersNode(loaded, "Loaded");
+    CPPUNIT_ASSERT(loaded->GetProperty(TrxVisibleGroupsProperty).IsNull());
+
+    std::map<std::string, mitk::DataNode*> children;
+    for (auto child : m_DM->DirectChildrenOf(node))
+    {
+      children[child->GetName()] = child;
+    }
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), children.size());
+    CPPUNIT_ASSERT(children["A"]->IsVisible(nullptr));
+    CPPUNIT_ASSERT(!children["B"]->IsVisible(nullptr));
+    CPPUNIT_ASSERT(children["C"]->IsVisible(nullptr));
+    CPPUNIT_ASSERT_EQUAL(4, loaded->GetFibersVisibility().size());
+
+    // Hiding the groups shows the whole tractogram again
+    children["A"]->SetVisibility(false);
+    children["C"]->SetVisibility(false);
+    CPPUNIT_ASSERT_EQUAL(10, loaded->GetFibersVisibility().size());
   }
 
   void TestPromptCancel()

@@ -1,6 +1,7 @@
 #include "TrxLoadDialog.hpp"
 
 #include <QAbstractItemView>
+#include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLabel>
@@ -126,8 +127,18 @@ TrxLoadDialog::TrxLoadDialog(const TrxFileInfo& info, QWidget* parent)
         name);
     }
     connect(m_Groups->model(), &QAbstractItemModel::dataChanged,
-      this, [this] { UpdateOkButton(); });
+      this, [this] { UpdateButtons(); });
     form->addRow("Groups:", m_Groups);
+
+    m_KeepOthers = new QCheckBox("Keep the streamlines of the unchecked groups");
+    m_KeepOthers->setChecked(true); // Don't lose data by default
+    m_KeepOthers->setToolTip(
+      "Checked: the whole file is loaded and only the checked groups are "
+      "shown. The other groups stay in the Data Manager and can be shown "
+      "later (hide all the groups to show the whole tractogram).\n"
+      "Unchecked: only the streamlines of the checked groups are loaded "
+      "(faster, less memory). The others are lost.");
+    form->addRow(QString(), m_KeepOthers);
   }
 
   m_Buttons = new QDialogButtonBox(
@@ -140,14 +151,20 @@ TrxLoadDialog::TrxLoadDialog(const TrxFileInfo& info, QWidget* parent)
   layout->addWidget(m_Buttons);
   setMinimumWidth(350);
 
-  UpdateOkButton();
+  UpdateButtons();
 }
 
-void TrxLoadDialog::UpdateOkButton()
+void TrxLoadDialog::UpdateButtons()
 {
-  // Nothing would be loaded if every group is unchecked
+  // Nothing would be loaded (or shown) if every group is unchecked
   m_Buttons->button(QDialogButtonBox::Ok)->setEnabled(
     m_Groups == nullptr || m_Groups->NbChecked() > 0);
+
+  // Nothing to keep when all the groups are checked
+  if (m_KeepOthers)
+  {
+    m_KeepOthers->setEnabled(m_Groups->NbChecked() != m_Groups->count());
+  }
 }
 
 TrxLoadChoice TrxLoadDialog::GetChoice() const
@@ -160,6 +177,7 @@ TrxLoadChoice TrxLoadDialog::GetChoice() const
   if (m_Groups && m_Groups->NbChecked() != m_Groups->count())
   {
     choice.groups = m_Groups->CheckedNames();
+    choice.keepOtherStreamlines = m_KeepOthers->isChecked();
   }
   return choice;
 }

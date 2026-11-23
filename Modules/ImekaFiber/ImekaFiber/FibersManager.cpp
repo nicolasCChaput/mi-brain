@@ -264,7 +264,24 @@ void FibersManager::FibersAdded(
   });
 
   m_Filtering.AddDataset(node, fiber);
-  m_FilteringUI.AddStreamlineGroups(node, fiber);
+  // Groups chosen in the TRX load dialog when the other streamlines are
+  // kept: they are shown, so only their streamlines are displayed.
+  std::set<std::string> visibleGroups;
+  std::string visibleGroupsList;
+  if (fiber->GetPropertyList()->GetStringProperty(
+        TrxVisibleGroupsProperty, visibleGroupsList))
+  {
+    fiber->GetPropertyList()->DeleteProperty(TrxVisibleGroupsProperty);
+    std::string::size_type begin = 0;
+    while (begin <= visibleGroupsList.size())
+    {
+      auto end = visibleGroupsList.find(TrxVisibleGroupsSeparator, begin);
+      if (end == std::string::npos) { end = visibleGroupsList.size(); }
+      visibleGroups.insert(visibleGroupsList.substr(begin, end - begin));
+      begin = end + 1;
+    }
+  }
+  m_FilteringUI.AddStreamlineGroups(node, fiber, visibleGroups);
 
   // Coloring chosen in the TRX load dialog. Setting "ColorType" goes through
   // the same callback as the coloring actions of the Data Manager.

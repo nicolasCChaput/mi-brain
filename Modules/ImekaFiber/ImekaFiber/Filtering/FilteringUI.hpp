@@ -2,6 +2,9 @@
 #ifndef IMEKA_FIBER_FILTERING_UI_HPP_INCLUDED
 #define IMEKA_FIBER_FILTERING_UI_HPP_INCLUDED
 
+#include <set>
+#include <string>
+
 #include "ImekaCommon/Callback.hpp"
 #include "ImekaCommon/DataManager.hpp"
 #include "ImekaFiber/Coloring//FibersColors.hpp"
@@ -38,9 +41,14 @@ public:
   void AddActionsToDataset(mitk::DataNode*);
   
   // Creates one tract group node, under the dataset node, for each streamline
-  // group stored in the fiber bundle (e.g. TRX groups). Returns false when
-  // there was nothing to create.
-  bool AddStreamlineGroups(mitk::DataNode*, mitk::FilteredFiberBundle*);
+  // group stored in the fiber bundle (e.g. TRX groups). The groups are
+  // hidden, except those named in `visibleGroups`, which restricts the
+  // display to their streamlines. Returns false when there was nothing to
+  // create.
+  bool AddStreamlineGroups(
+    mitk::DataNode*,
+    mitk::FilteredFiberBundle*,
+    const std::set<std::string>& visibleGroups = {});
   // Hides the TRX group nodes of the dataset. Returns true if it has any.
   bool HideFixedTractGroups(const mitk::DataNode*);
   mitk::DataNode::Pointer NewActiveROINode(

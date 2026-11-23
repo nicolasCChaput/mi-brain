@@ -10,6 +10,7 @@
 
 #include <mitkLog.h>
 #include <mitkProperties.h>
+#include <mitkStringProperty.h>
 
 #include "FilteredFiberBundle.hpp"
 #include "ScopedProgress.hpp"
@@ -428,6 +429,19 @@ vtkIdType FIBERBUNDLE_EXPORT ReadTrx(
     choice = *answer;
   }
 
+  // Groups to show once loaded, when the whole file is kept
+  std::string visibleGroups;
+  if (choice.groups && choice.keepOtherStreamlines)
+  {
+    for (const auto& name : *choice.groups)
+    {
+      if (groups.count(name) == 0) { continue; }
+      if (!visibleGroups.empty()) { visibleGroups += TrxVisibleGroupsSeparator; }
+      visibleGroups += name;
+    }
+    choice.groups.reset(); // Load the whole file
+  }
+
   vtkSmartPointer<vtkPolyData> polyData;
   if (!choice.groups)
   {
@@ -455,6 +469,11 @@ vtkIdType FIBERBUNDLE_EXPORT ReadTrx(
   {
     fiber->SetProperty(TrxInitialColoringProperty,
       mitk::IntProperty::New(static_cast<int>(choice.coloring)));
+  }
+  if (!visibleGroups.empty())
+  {
+    fiber->SetProperty(TrxVisibleGroupsProperty,
+      mitk::StringProperty::New(visibleGroups));
   }
 
   return polyData->GetNumberOfPoints();

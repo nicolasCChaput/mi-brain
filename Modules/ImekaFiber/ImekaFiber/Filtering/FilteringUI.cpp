@@ -190,7 +190,8 @@ bool FilteringUI::HideFixedTractGroups(const mitk::DataNode* datasetNode)
 
 bool FilteringUI::AddStreamlineGroups(
   mitk::DataNode* datasetNode,
-  mitk::FilteredFiberBundle* fiber)
+  mitk::FilteredFiberBundle* fiber,
+  const std::set<std::string>& visibleGroups)
 {
   const auto& groups = fiber->GetStreamlineGroups();
   if (groups.empty()) { return false; }
@@ -199,6 +200,7 @@ bool FilteringUI::AddStreamlineGroups(
   // its parent is changed), so don't create the groups twice.
   if (m_Filtering.HasFixedTractGroup(datasetNode)) { return false; }
 
+  std::vector<mitk::DataNode::Pointer> toShow;
   for (const auto& name_indexes : groups)
   {
     FiberIndexes indexes;
@@ -217,6 +219,17 @@ bool FilteringUI::AddStreamlineGroups(
     m_Filtering.AddFixedTractGroup(datasetNode, TGNode, indexes);
     AddActionsToTractGroup(true, datasetNode, TGNode);
     m_DM.AddNode(TGNode, datasetNode);
+    if (visibleGroups.count(name_indexes.first))
+    {
+      toShow.push_back(TGNode);
+    }
+  }
+
+  // Shown once all the groups exist, the same way as a click in the Data
+  // Manager would (through the visibility callback).
+  for (const auto& TGNode : toShow)
+  {
+    TGNode->SetVisibility(true);
   }
   return true;
 }

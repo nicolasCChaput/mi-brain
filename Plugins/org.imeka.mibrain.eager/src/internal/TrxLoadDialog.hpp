@@ -9,6 +9,7 @@
 
 #include "FiberBundle/Trx.h"
 
+class QCheckBox;
 class QDialogButtonBox;
 class QStandardItemModel;
 
@@ -35,7 +36,8 @@ private:
 };
 
 // Shown before a .trx file is loaded: file name, number of points and of
-// streamlines, the coloring to apply and the groups to load.
+// streamlines, the coloring to apply, the groups to load and whether the
+// streamlines of the other groups are kept (loaded but hidden) or lost.
 class TrxLoadDialog : public QDialog
 {
 public:
@@ -44,10 +46,11 @@ public:
   TrxLoadChoice GetChoice() const;
 
 private:
-  void UpdateOkButton();
+  void UpdateButtons();
 
   QComboBox* m_Coloring;
   CheckableComboBox* m_Groups = nullptr; // nullptr if the file has no group
+  QCheckBox* m_KeepOthers = nullptr;     // nullptr if the file has no group
   QDialogButtonBox* m_Buttons;
 };
 

@@ -67,8 +67,9 @@ Entry point: `mitk::FiberBundleTrxReader::DoRead()`
    the file is closed (see §8).
 3. **Load dialog** – if a load prompt is registered (`SetTrxLoadPrompt`, done
    by the GUI), it is called with the file name, number of points, number of
-   streamlines and the groups. The user picks a coloring and the groups to
-   load, or cancels (see §9). Nothing has been converted yet at this point.
+   streamlines and the groups. The user picks a coloring, the groups to
+   load and whether the streamlines of the other groups are kept, or cancels
+   (see §9). Nothing has been converted yet at this point.
 4. **Positions → `vtkPoints`** – `TrxToPolyData()` allocates one
    `vtkFloatArray` of `num_vertices()` × 3, then walks the positions with
    `for_each_positions_chunk()` in 64 MB chunks. Each chunk is converted by
@@ -87,14 +88,17 @@ Entry point: `mitk::FiberBundleTrxReader::DoRead()`
      (`LinesPolyData()`), without creating one `vtkPolyLine` per streamline as
      `ReadTck` does.
 
-   When only some groups were chosen, steps 4 and 5 are done by
-   `TrxSubsetToPolyData()` instead, for the chosen streamlines only (§9).
+   When only some groups were chosen and the other streamlines are not kept,
+   steps 4 and 5 are done by `TrxSubsetToPolyData()` instead, for the chosen
+   streamlines only (§9).
 6. **Hand-off** – `trxFile.close()` releases the mapping (and the temporary
    directory trx-cpp extracts zipped files into), then
    `fiber->SetFiberPolyData(polyData)` stores the data (it deep-copies, so
    closing first is safe) and `fiber->SetStreamlineGroups(groups)` stores the
    groups. When a prompt is registered, the chosen coloring is stored in the
-   `trx.InitialColoring` property of the fiber bundle (§9).
+   `trx.InitialColoring` property of the fiber bundle, and, when the other
+   streamlines are kept, the chosen groups in its `trx.VisibleGroups`
+   property (§9).
 
 ## 3. How writing works
 
@@ -146,12 +150,12 @@ real reference geometry (`VOXEL_TO_RASMM`, `DIMENSIONS`) on read or write.
 
 | File | Role |
 |---|---|
-| `Modules/FiberBundle/FiberBundle/Trx.h` | Declares `ReadTrx()` and `WriteTrx()` (exported with `FiberBundle_EXPORT`), and the load prompt API: `TrxFileInfo`, `TrxLoadChoice`, `TrxLoadPrompt`, `SetTrxLoadPrompt()`, `TrxLoadCancelled`, `TrxInitialColoringProperty` (§9). Only VTK/std/MITK types in the interface, so trx-cpp stays private. |
+| `Modules/FiberBundle/FiberBundle/Trx.h` | Declares `ReadTrx()` and `WriteTrx()` (exported with `FiberBundle_EXPORT`), and the load prompt API: `TrxFileInfo`, `TrxLoadChoice`, `TrxLoadPrompt`, `SetTrxLoadPrompt()`, `TrxLoadCancelled`, `TrxInitialColoringProperty`, `TrxVisibleGroupsProperty` / `TrxVisibleGroupsSeparator` (§9). Only VTK/std/MITK types in the interface, so trx-cpp stays private. |
 | `Modules/FiberBundle/FiberBundle/Trx.cpp` | TRX ⇄ `vtkPolyData` conversion (see §2 and §3). |
 | `Modules/DiffusionIO/mitkFiberBundleTrxReader.h/.cpp` | `mitk::FiberBundleTrxReader`, an `AbstractFileReader` registered for the TRX mime type. |
 | `Modules/DiffusionIO/mitkFiberBundleTrxWriter.h/.cpp` | `mitk::FiberBundleTrxWriter`, an `AbstractFileWriter` for `FilteredFiberBundle` and the TRX mime type. Passes the bundle's streamline groups to `WriteTrx()`. |
 | `Modules/ImekaFiber/Testing/TrxGroupsTest.cpp` | `TrxGroupsTest` suite: group nodes, visibility, saving, TRX round trip, shuffle and saver regressions (see §8), load prompt (see §9). |
-| `Plugins/org.imeka.mibrain.eager/src/internal/TrxLoadDialog.hpp/.cpp` | `TrxLoadDialog` (the load dialog, see §9) and `CheckableComboBox` (combo box of check boxes used for the groups). |
+| `Plugins/org.imeka.mibrain.eager/src/internal/TrxLoadDialog.hpp/.cpp` | `TrxLoadDialog` (the load dialog, see §9, with the "Keep the streamlines of the unchecked groups" check box) and `CheckableComboBox` (combo box of check boxes used for the groups). |
 
 ### Modified files
 
@@ -169,8 +173,8 @@ real reference geometry (`VOXEL_TO_RASMM`, `DIMENSIONS`) on read or write.
 | `Modules/FiberBundle/FiberBundle/FilteredFiberBundle.hpp/.cpp` | `StreamlineGroups` type with `SetStreamlineGroups()` / `GetStreamlineGroups()`. `Shuffle()` now returns the new order and remaps the groups. |
 | `Modules/ImekaFiber/ImekaFiber/types.hpp` | `TractGroup::fixedIndexes` / `IsFixed()` for the tract groups made of a fixed set of streamlines (TRX groups). |
 | `Modules/ImekaFiber/ImekaFiber/Filtering/Filtering.hpp/.cpp` | `AddFixedTractGroup()`, `HasFixedTractGroup()`, `HasVisibleFixedTractGroup()`, `RemapFixedTractGroups()`; fixed TGs handled in `EnableTractGroup()`, `DisableTractGroup()`, `HasAnyActiveROI()` and `JoinAndExclude()`. |
-| `Modules/ImekaFiber/ImekaFiber/Filtering/FilteringUI.hpp/.cpp` | `AddStreamlineGroups()` creates the group nodes; `HideFixedTractGroups()` resets them when a dataset or the Tracts category is shown. |
-| `Modules/ImekaFiber/ImekaFiber/FibersManager.cpp` | Calls `AddStreamlineGroups()` in `FibersAdded()`; `ShuffleFibers()` remaps the fixed TGs and recomputes the length subset; `FibersAdded()` applies the coloring chosen in the TRX load dialog (§9). |
+| `Modules/ImekaFiber/ImekaFiber/Filtering/FilteringUI.hpp/.cpp` | `AddStreamlineGroups()` creates the group nodes and shows the ones named in its `visibleGroups` argument; `HideFixedTractGroups()` resets them when a dataset or the Tracts category is shown. |
+| `Modules/ImekaFiber/ImekaFiber/FibersManager.cpp` | Calls `AddStreamlineGroups()` in `FibersAdded()`; `ShuffleFibers()` remaps the fixed TGs and recomputes the length subset; `FibersAdded()` applies the coloring chosen in the TRX load dialog and, when the other streamlines are kept, shows the chosen groups (§9). |
 | `Plugins/org.imeka.mibrain.eager/src/internal/PluginActivator.cpp` | Registers the TRX load prompt (`SetTrxLoadPrompt`) on start, removes it on stop (§9). |
 | `Plugins/org.imeka.mibrain.eager/files.cmake`, `CMakeLists.txt` | Adds `TrxLoadDialog.cpp`; `FiberBundle` added to `MODULE_DEPENDS`. |
 | `Modules/ImekaFiber/ImekaFiber/Mapper/MapperData.hpp/.cpp` | `FiberBundleFromData()` records the new index of each copied streamline (`newIds`) and fills the groups of the new bundle; `AddStreamlineGroup()` helper. |
@@ -292,7 +296,9 @@ absolute paths and makes the build reproducible on other machines/CI. It is
 - Those are regular MI-Brain tract groups with a fixed set of streamlines
   (`TractGroup::fixedIndexes`). In `Filtering::JoinAndExclude()` the group's
   streamlines act as the first AND, so ROIs added to it still filter it.
-  Group nodes are **hidden on load**, so the whole tractogram is displayed.
+  Group nodes are **hidden on load**, so the whole tractogram is displayed
+  (except when the load dialog keeps the other streamlines: the chosen
+  groups are then shown, see §9).
   A fixed tract group is active when its node is visible (the node visibility
   is the only state: hiding/showing the dataset changes its children's
   visibility without calling their callbacks). The dataset then shows the
@@ -394,6 +400,8 @@ dialog is shown before any streamline is converted:
 │                  ☑ AF_L (12,000)          │
 │                  ☐ AF_R (11,500)          │
 │                  ☑ CST_L (20,000)         │
+│ ☑ Keep the streamlines of the unchecked   │
+│   groups                                  │
 │                            [ OK ] [Cancel]│
 └───────────────────────────────────────────┘
 ```
@@ -405,6 +413,14 @@ dialog is shown before any streamline is converted:
   checked by default. The popup stays open while groups are (un)checked. If
   the file has no group, "No group in this file" is shown instead. OK is
   disabled when every group is unchecked.
+- **Keep the streamlines of the unchecked groups** (checked by default, only
+  enabled when some group is unchecked, absent if the file has no group):
+  - checked: the whole file and all its groups are loaded, and the checked
+    groups are shown, so only their streamlines are displayed. The unchecked
+    groups stay hidden in the Data Manager and can be shown later; hiding all
+    the groups shows the whole tractogram.
+  - unchecked: only the streamlines of the checked groups are loaded (faster,
+    less memory); the others are lost.
 - **OK** loads the file; **Cancel** stops the loading.
 
 ### How it is wired
@@ -422,8 +438,11 @@ QmitkIOUtil::Load (GUI thread)
           ├ LoadPrompt()(TrxFileInfo)  ───────►  TrxLoadDialog (eager plugin)
           │                            ◄───────  TrxLoadChoice / std::nullopt
           ├ TrxToPolyData or TrxSubsetToPolyData
-          └ fiber property "trx.InitialColoring" = choice.coloring
+          ├ fiber property "trx.InitialColoring" = choice.coloring
+          └ fiber property "trx.VisibleGroups"  = chosen groups (if kept)
 DataStorage::Add → FibersManager::FibersAdded
+  ├ FilteringUI::AddStreamlineGroups(node, fiber, trx.VisibleGroups)
+  │                                          (chosen group nodes shown)
   └ node "ColorType" = trx.InitialColoring  (same callback as the color menu)
 ```
 
@@ -440,7 +459,13 @@ DataStorage::Add → FibersManager::FibersAdded
   dialog is shown.
 - `TrxLoadChoice::groups` has no value when every group is checked: the whole
   file is loaded (fast path, which also keeps the streamlines that are in no
-  group). Otherwise:
+  group). If `TrxLoadChoice::keepOtherStreamlines` is set, the whole file is
+  also loaded, and the names of the chosen groups are stored in the
+  `trx.VisibleGroups` StringProperty of the fiber bundle ('\n' separated).
+  `FibersManager::FibersAdded()` reads and removes it, and
+  `FilteringUI::AddStreamlineGroups()` shows these groups once all the group
+  nodes are added (through the same visibility callback as a click in the
+  Data Manager). Otherwise:
   - `SelectGroups()` keeps the chosen groups, builds the sorted union of their
     streamlines and remaps the group indices to the new streamline order
     (new streamline `i` is streamline `selected[i]` of the file);
@@ -465,6 +490,7 @@ Added to `TrxGroupsTest` (the prompt is reset in `tearDown()`):
 |---|---|
 | `TestPromptInfo` | File name, numbers of points/streamlines and group sizes given to the prompt; default choice loads the whole file. |
 | `TestPromptLoadsChosenGroups` | Only the streamlines of the chosen groups are loaded, with all their points; groups remapped. |
+| `TestPromptKeepsOtherStreamlines` | With `keepOtherStreamlines`, all the streamlines and groups are loaded and only the chosen groups are shown; the property is removed. |
 | `TestPromptCancel` | Cancel throws `TrxLoadCancelled` and leaves the bundle empty. |
 | `TestPromptColoring` | The chosen coloring is applied when the node is added; the property is removed. |
 
@@ -478,5 +504,12 @@ The dialog itself (widgets) is not covered by automated tests.
   need changes to `QmitkIOUtil` or a custom File > Open action.
 - **Shown on reload too**: `ReloadFromDiskAction` and scenes containing a
   `.trx` file go through the same reader, so the dialog appears there too.
-- **Ungrouped streamlines** can only be loaded with the whole file (all groups
-  checked); an "(ungrouped streamlines)" entry could be added.
+- **Ungrouped streamlines** are only loaded with the whole file (all groups
+  checked, or "Keep the streamlines of the unchecked groups" checked); an
+  "(ungrouped streamlines)" entry could be added.
+- **Saving after a "keep" load**: the save actions write the visible
+  streamlines (§8), so saving right after loading with only some groups shown
+  writes only those groups. Hide all the groups first to save the whole
+  tractogram.
+- **Showing the dataset again** (hide then show it, §8) hides every TRX group,
+  including the ones chosen in the dialog: the whole tractogram is shown.

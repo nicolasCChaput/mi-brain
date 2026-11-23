@@ -33,9 +33,16 @@ struct TrxLoadChoice
 {
   mitk::FilteredFiberBundle::Coloring coloring =
     mitk::FilteredFiberBundle::Orientation;
-  // Names of the groups to load. No value: load the whole file. Otherwise,
-  // only the streamlines of these groups (and only these groups) are loaded.
+  // Names of the chosen groups. No value: load the whole file. Otherwise,
+  // see keepOtherStreamlines.
   std::optional<std::set<std::string>> groups;
+  // Only used when `groups` has a value.
+  // false: only the streamlines of the chosen groups (and only these groups)
+  //        are loaded, the others are lost.
+  // true:  the whole file (all the streamlines and all the groups) is loaded,
+  //        but only the chosen groups are shown (see
+  //        TrxVisibleGroupsProperty).
+  bool keepOtherStreamlines = false;
 };
 
 // Asks the user how to load a TRX file. Returns std::nullopt to cancel.
@@ -59,13 +66,23 @@ struct TrxLoadCancelled : std::runtime_error
 // FibersManager::FibersAdded once the bundle has a node.
 constexpr const char* TrxInitialColoringProperty = "trx.InitialColoring";
 
+// StringProperty set on the fiber bundle by ReadTrx when the whole file is
+// loaded but only some groups were chosen (TrxLoadChoice::keepOtherStreamlines):
+// the names of the chosen groups, separated by TrxVisibleGroupsSeparator.
+// FibersManager::FibersAdded shows these groups, which restricts the display
+// to their streamlines, then removes the property.
+constexpr const char* TrxVisibleGroupsProperty = "trx.VisibleGroups";
+constexpr char TrxVisibleGroupsSeparator = '\n';
+
 // Reads a .trx file (zipped or not) into `fiber`. Positions are converted
 // from TRX RAS+ mm to MITK world (LPS mm) and the TRX groups are stored as
 // the streamline groups of the fiber bundle. Other TRX data (dpv, dps, dpg,
 // header affine) are not loaded. Drives the MITK progress bar.
 // If a load prompt is set, it is called once the file is opened; only the
-// streamlines of the chosen groups are then loaded, and the chosen coloring
-// is stored in the TrxInitialColoringProperty of `fiber`.
+// streamlines of the chosen groups are then loaded (or all of them, with the
+// chosen groups in the TrxVisibleGroupsProperty of `fiber`, if
+// keepOtherStreamlines is set), and the chosen coloring is stored in the
+// TrxInitialColoringProperty of `fiber`.
 // Returns the number of points read (0 for an empty file or an empty
 // selection, in which case `fiber` is left untouched). Throws if trx-cpp
 // can't load the file, and TrxLoadCancelled if the user cancels.
