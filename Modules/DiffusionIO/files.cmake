@@ -11,6 +11,8 @@ set(CPP_FILES
   mitkFiberBundleTckWriter.cpp
   mitkFiberBundleTrackVisReader.cpp
   mitkFiberBundleTrackVisWriter.cpp
+  mitkFiberBundleTrxReader.cpp
+  mitkFiberBundleTrxWriter.cpp
   mitkFiberBundleVtkReader.cpp
   mitkFiberBundleVtkWriter.cpp
   mitkFiberBundleSerializer.cpp

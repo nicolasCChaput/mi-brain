@@ -26,7 +26,13 @@ Tu build MI-Brain, you must build MITK and link to the ``mi-brain`` folder in cm
       -D MITK_EXTENSION_DIRS=C:/path/to/mi-brain \
       -D MITK_BUILD_CONFIGURATION=WorkbenchReleaseNoPython \
       -D BUILD_TESTING:BOOL=OFF \
+      -D MIBRAIN_TRX_CPP_DIR=C:/path/to/trx-cpp \
       ..
+
+TRX support needs a source checkout of `trx-cpp
+<https://github.com/tee-ar-ex/trx-cpp>`_. ``MIBRAIN_TRX_CPP_DIR`` must point
+to it. trx-cpp is built statically into the ``FiberBundle`` module, using
+ITK's Eigen.
 
 How-to package
 --------------
