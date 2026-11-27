@@ -52,7 +52,7 @@ public:
     const QSet<vtkIdType>&) const;
   void CalculateStatsUsingVisibility();
   float GetRealMaxFiberLength() const { return m_RealMaxFiberLength; }
-  void MirrorFibers(unsigned int axis) {FiberBundle::MirrorFibers(axis);};
+  void MirrorFibers(unsigned int axis) override {FiberBundle::MirrorFibers(axis);}
   void MirrorFibers(const BaseGeometry* anatGeo, const unsigned int axis);
 
   void ApplyColorCoding(
@@ -61,8 +61,8 @@ public:
     const FilteredFiberBundle::Coloring);
 
   void ColorCodingByEndPoints();
-  virtual void ColorFibersByCurvature(const bool minMaxNorm = true);
-  void ColorFibersByOrientation();
+  void ColorFibersByCurvature(const bool minMaxNorm = true) override;
+  void ColorFibersByOrientation() override;
   template <typename TPixel>
   void ColorFibersByLUT(
     const mitk::PixelType pixelType,
