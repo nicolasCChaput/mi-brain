@@ -3,6 +3,7 @@ set(SRC_CPP_FILES
 
 set(INTERNAL_CPP_FILES
   PluginActivator.cpp
+  TrxLoadDialog.cpp
 )
 
 set(UI_FILES

@@ -13,7 +13,7 @@
 
 #include "ImekaFiberExports.h"
 
-class ImekaFiber_EXPORT FibersManagerTester : public mitk::TestFixture
+class IMEKAFIBER_EXPORT FibersManagerTester : public mitk::TestFixture
 {
 public:
   FibersManagerTester();

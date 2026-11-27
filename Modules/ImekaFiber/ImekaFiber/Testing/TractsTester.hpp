@@ -7,7 +7,7 @@
 #include "ImekaFiberExports.h"
 
 // Tests the loading and saving of trk, tck and maybe others
-class ImekaFiber_EXPORT TractsTester : public FibersManagerTester
+class IMEKAFIBER_EXPORT TractsTester : public FibersManagerTester
 {
 public:
   TractsTester(const bool needAnat, const std::string& type);

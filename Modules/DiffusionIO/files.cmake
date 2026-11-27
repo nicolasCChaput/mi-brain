@@ -4,12 +4,15 @@ set(CPP_FILES
 
   mitkDiffusionIOMimeTypes.cpp
 
+  mitkFiberBundleDicomReferenceTags.cpp
   mitkFiberBundleDicomReader.cpp
   mitkFiberBundleDicomWriter.cpp
   mitkFiberBundleTckReader.cpp
   mitkFiberBundleTckWriter.cpp
   mitkFiberBundleTrackVisReader.cpp
   mitkFiberBundleTrackVisWriter.cpp
+  mitkFiberBundleTrxReader.cpp
+  mitkFiberBundleTrxWriter.cpp
   mitkFiberBundleVtkReader.cpp
   mitkFiberBundleVtkWriter.cpp
   mitkFiberBundleSerializer.cpp

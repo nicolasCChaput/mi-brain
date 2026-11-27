@@ -2,6 +2,8 @@
 
 #include <mitkVtkResliceInterpolationProperty.h>
 
+#include "FiberBundle/Trx.h"
+
 #include "ImekaCommon/Colors.hpp"
 #include "ImekaCommon/Predicate.hpp"
 #include "ImekaGeometry/ViewUtils.hpp"
@@ -262,6 +264,34 @@ void FibersManager::FibersAdded(
   });
 
   m_Filtering.AddDataset(node, fiber);
+  // Groups chosen in the TRX load dialog when the other streamlines are
+  // kept: they are shown, so only their streamlines are displayed.
+  std::set<std::string> visibleGroups;
+  std::string visibleGroupsList;
+  if (fiber->GetPropertyList()->GetStringProperty(
+        TrxVisibleGroupsProperty, visibleGroupsList))
+  {
+    fiber->GetPropertyList()->DeleteProperty(TrxVisibleGroupsProperty);
+    std::string::size_type begin = 0;
+    while (begin <= visibleGroupsList.size())
+    {
+      auto end = visibleGroupsList.find(TrxVisibleGroupsSeparator, begin);
+      if (end == std::string::npos) { end = visibleGroupsList.size(); }
+      visibleGroups.insert(visibleGroupsList.substr(begin, end - begin));
+      begin = end + 1;
+    }
+  }
+  m_FilteringUI.AddStreamlineGroups(node, fiber, visibleGroups);
+
+  // Coloring chosen in the TRX load dialog. Setting "ColorType" goes through
+  // the same callback as the coloring actions of the Data Manager.
+  int coloring = -1;
+  if (fiber->GetPropertyList()->GetIntProperty(
+        TrxInitialColoringProperty, coloring))
+  {
+    fiber->GetPropertyList()->DeleteProperty(TrxInitialColoringProperty);
+    node->SetIntProperty("ColorType", coloring);
+  }
 
   // Centering and updating views
   mitk::RenderingManager::GetInstance()->InitializeViews(fiber->GetGeometry());
@@ -477,15 +507,23 @@ void FibersManager::ShuffleFibers(
   mitk::DataNode* datasetNode,
   mitk::FilteredFiberBundle* fibers)
 {
-  fibers->Shuffle();
+  const auto ordering = fibers->Shuffle();
+  // Fixed TGs (e.g. TRX groups) hold streamline indices
+  m_Filtering.RemapFixedTractGroups(datasetNode, ordering);
 
-  const bool isFiltered = m_Filtering.UpdateResultsLinkedTo(datasetNode);
+  // The length subset holds streamline indices too
+  m_Filtering.RecalculateSubset(datasetNode);
+
+  // UpdateResultsLinkedTo only knows about ROIs: a visible fixed TG filters
+  // the dataset without any ROI.
+  const bool resultsUpdated = m_Filtering.UpdateResultsLinkedTo(datasetNode);
+  const bool isFiltered =
+    resultsUpdated || m_Filtering.HasVisibleFixedTractGroup(datasetNode);
   if (!isFiltered)
   {
     // This call shouldn't be necessary but it's the simplest chain of calls
     // which has the responsability to update the OpenGL buffer objects, so
     // it's complex to avoid it when we are not in filtering mode.
-    m_Filtering.RecalculateSubset(datasetNode);
     m_Filtering.ForceFilterDataset(datasetNode, fibers);
     m_FibersNodeData[datasetNode].UpdateIndices();
   }

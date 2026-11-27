@@ -8,8 +8,12 @@ US_INITIALIZE_MODULE
 #include <mitkNodePredicateProperty.h>
 #include <QmitkNodeDescriptorManager.h>
 
+#include <QApplication>
+#include <QThread>
+
 #include "ImekaFiber/GroupNodes.hpp"
 #include "ImekaFiber/utils.hpp"
+#include "TrxLoadDialog.hpp"
 
 ctkPluginContext* PluginActivator::m_Context = nullptr;
 
@@ -21,6 +25,25 @@ ctkPluginContext* PluginActivator::GetContext()
 void PluginActivator::start(ctkPluginContext* context)
 {
   m_Context = context;
+
+  // Asks which groups of a .trx file to load, and how to color them, before
+  // the reader converts the streamlines (see FiberBundle/Trx.h).
+  SetTrxLoadPrompt([](const TrxFileInfo& info) -> std::optional<TrxLoadChoice>
+  {
+    // The readers are called from the GUI thread by File > Open and drag and
+    // drop. Never show a dialog from another thread: load everything.
+    if (QThread::currentThread() != qApp->thread())
+    {
+      return TrxLoadChoice();
+    }
+
+    TrxLoadDialog dialog(info, QApplication::activeWindow());
+    if (dialog.exec() != QDialog::Accepted)
+    {
+      return std::nullopt;
+    }
+    return dialog.GetChoice();
+  });
 
   auto manager = QmitkNodeDescriptorManager::GetInstance();
 
@@ -78,5 +101,6 @@ void PluginActivator::stop(ctkPluginContext* context)
 {
   Q_UNUSED(context)
 
+  SetTrxLoadPrompt(nullptr);
   m_Context = nullptr;
 }
